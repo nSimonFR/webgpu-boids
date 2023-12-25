@@ -35,29 +35,45 @@ const main = async () => {
     },
   });
 
-  const renderPassDescriptor: GPURenderPassDescriptor = {
-    label: 'our basic canvas renderPass',
-    colorAttachments: [
-      {
-        view: context.getCurrentTexture().createView(),
-        clearValue: [0.3, 0.3, 0.3, 1],
-        loadOp: 'clear',
-        storeOp: 'store',
-      },
-    ],
+  const render = () => {
+    const renderPassDescriptor: GPURenderPassDescriptor = {
+      label: 'our basic canvas renderPass',
+      colorAttachments: [
+        {
+          view: context.getCurrentTexture().createView(),
+          clearValue: [0.3, 0.3, 0.3, 1],
+          loadOp: 'clear',
+          storeOp: 'store',
+        },
+      ],
+    };
+
+    // make a command encoder to start encoding commands
+    const encoder = device.createCommandEncoder({ label: 'our encoder' });
+
+    // make a render pass encoder to encode render specific commands
+    const pass = encoder.beginRenderPass(renderPassDescriptor);
+    pass.setPipeline(pipeline);
+    pass.draw(3);  // call our vertex shader 3 times
+    pass.end();
+
+    const commandBuffer = encoder.finish();
+    device.queue.submit([commandBuffer]);
   };
 
-  // make a command encoder to start encoding commands
-  const encoder = device.createCommandEncoder({ label: 'our encoder' });
+  const observer = new ResizeObserver(entries => {
+    for (const entry of entries) {
+      const canvas = entry.target as HTMLCanvasElement;
 
-  // make a render pass encoder to encode render specific commands
-  const pass = encoder.beginRenderPass(renderPassDescriptor);
-  pass.setPipeline(pipeline);
-  pass.draw(3);  // call our vertex shader 3 times
-  pass.end();
+      const width = entry.contentBoxSize[0].inlineSize;
+      const height = entry.contentBoxSize[0].blockSize;
+      canvas.width = Math.max(1, Math.min(width, device.limits.maxTextureDimension2D));
+      canvas.height = Math.max(1, Math.min(height, device.limits.maxTextureDimension2D));
 
-  const commandBuffer = encoder.finish();
-  device.queue.submit([commandBuffer]);
-}
+      render();
+    }
+  });
+  observer.observe(canvas);
+};
 
 main();
