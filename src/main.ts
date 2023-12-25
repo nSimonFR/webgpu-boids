@@ -1,12 +1,30 @@
 import firstShader from "./shaders/first.wgsl?raw";
 
-const main = async () => {
-  const adapter = await navigator.gpu?.requestAdapter();
-  const device = await adapter?.requestDevice();
-  if (!device) {
-    throw new Error("need a browser that supports WebGPU");
+const start = async () => {
+  if (!navigator.gpu) {
+    throw new Error(`WebGPU is not supported in your browser`);
   }
 
+  const adapter = await navigator.gpu?.requestAdapter();
+  if (!adapter) {
+    throw new Error("WebGPU disabled");
+  }
+
+  const device = await adapter?.requestDevice();
+  device.lost.then((info) => {
+    console.error(`WebGPU device was lost: ${info.message}`);
+
+    // 'reason' will be 'destroyed' if we intentionally destroy the device.
+    if (info.reason !== 'destroyed') {
+      // try again
+      start();
+    }
+  });
+
+  main(device);
+};
+
+const main = async (device: GPUDevice) => {
   // Get a WebGPU context from the canvas and configure it
   const canvas = document.querySelector("canvas")!;
   const context = canvas.getContext("webgpu")!;
@@ -76,4 +94,4 @@ const main = async () => {
   observer.observe(canvas);
 };
 
-main();
+start();
