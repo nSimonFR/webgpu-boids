@@ -1,24 +1,63 @@
-import './style.css'
-import typescriptLogo from './typescript.svg'
-import viteLogo from '/vite.svg'
-import { setupCounter } from './counter.ts'
+import firstShader from "./shaders/first.wgsl?raw";
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <div>
-    <a href="https://vitejs.dev" target="_blank">
-      <img src="${viteLogo}" class="logo" alt="Vite logo" />
-    </a>
-    <a href="https://www.typescriptlang.org/" target="_blank">
-      <img src="${typescriptLogo}" class="logo vanilla" alt="TypeScript logo" />
-    </a>
-    <h1>Vite + TypeScript</h1>
-    <div class="card">
-      <button id="counter" type="button"></button>
-    </div>
-    <p class="read-the-docs">
-      Click on the Vite and TypeScript logos to learn more
-    </p>
-  </div>
-`
+const main = async () => {
+  const adapter = await navigator.gpu?.requestAdapter();
+  const device = await adapter?.requestDevice();
+  if (!device) {
+    throw new Error("need a browser that supports WebGPU");
+  }
 
-setupCounter(document.querySelector<HTMLButtonElement>('#counter')!)
+  // Get a WebGPU context from the canvas and configure it
+  const canvas = document.querySelector("canvas")!;
+  const context = canvas.getContext("webgpu")!;
+  const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
+  context.configure({
+    device,
+    format: presentationFormat,
+  });
+
+  const module = device.createShaderModule({
+    label: "our hardcoded red triangle shaders",
+    code: firstShader,
+  });
+
+  const pipeline = device.createRenderPipeline({
+    label: 'our hardcoded red triangle pipeline',
+    layout: 'auto',
+    vertex: {
+      module,
+      entryPoint: 'vs',
+    },
+    fragment: {
+      module,
+      entryPoint: 'fs',
+      targets: [{ format: presentationFormat }],
+    },
+  });
+
+  const renderPassDescriptor: GPURenderPassDescriptor = {
+    label: 'our basic canvas renderPass',
+    colorAttachments: [
+      {
+        view: context.getCurrentTexture().createView(),
+        clearValue: [0.3, 0.3, 0.3, 1],
+        loadOp: 'clear',
+        storeOp: 'store',
+      },
+    ],
+  };
+
+  // make a command encoder to start encoding commands
+  const encoder = device.createCommandEncoder({ label: 'our encoder' });
+
+  // make a render pass encoder to encode render specific commands
+  const pass = encoder.beginRenderPass(renderPassDescriptor);
+  pass.setPipeline(pipeline);
+  pass.draw(3);  // call our vertex shader 3 times
+  pass.end();
+
+  const commandBuffer = encoder.finish();
+  device.queue.submit([commandBuffer]);
+}
+
+main();
