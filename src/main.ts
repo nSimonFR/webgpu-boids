@@ -1,3 +1,4 @@
+import { Boid, createBoid, kNumObjects, uniformBufferSize, updateBoid } from "./boid";
 import boidShader from "./shaders/boid.wgsl?raw";
 
 const start = async () => {
@@ -20,17 +21,6 @@ const start = async () => {
   });
 
   main(device);
-};
-
-const rand = (min?: number, max?: number): number => {
-  if (min === undefined) {
-    min = 0;
-    max = 1;
-  } else if (max === undefined) {
-    max = min;
-    min = 0;
-  }
-  return min + Math.random() * (max - min);
 };
 
 const main = async (device: GPUDevice) => {
@@ -61,27 +51,7 @@ const main = async (device: GPUDevice) => {
     },
   });
 
-  type objectInfo = {
-    scale: number,
-    position: number[],
-    velocity: number[],
-    uniformBuffer: GPUBuffer,
-    uniformValues: Float32Array,
-    bindGroup: GPUBindGroup,
-  };
-
-  const uniformBufferSize =
-    2 * 4 + // offset
-    2 * 4 + // velocity
-    2 * 4;  // scale
-
-  const kOffsetOffset = 0;
-  const kVelocityOffset = 2;
-  const kScaleOffset = 4;
-
-  const kNumObjects = 50;
-  const objectInfos: objectInfo[] = [];
-
+  const boids: Boid[] = [];
   for (let i = 0; i < kNumObjects; ++i) {
     const uniformBuffer = device.createBuffer({
       label: `static uniforms for obj: ${i}`,
@@ -91,11 +61,6 @@ const main = async (device: GPUDevice) => {
 
     const uniformValues = new Float32Array(uniformBufferSize / 4);
 
-    const position = [rand(-0.9, 0.9), rand(-0.9, 0.9)];
-    const velocity = [rand(-0.1, 0.1), rand(-0.1, 0.1)];
-
-    device.queue.writeBuffer(uniformBuffer, 0, uniformValues);
-
     const bindGroup = device.createBindGroup({
       label: `bind group for obj: ${i}`,
       layout: pipeline.getBindGroupLayout(0),
@@ -104,13 +69,11 @@ const main = async (device: GPUDevice) => {
       ],
     });
 
-    objectInfos.push({
-      scale: rand(0.1, 0.2),
-      position,
-      velocity,
+    boids.push({
       uniformBuffer,
       uniformValues,
       bindGroup,
+      ...createBoid(),
     });
   };
 
@@ -134,22 +97,11 @@ const main = async (device: GPUDevice) => {
     const pass = encoder.beginRenderPass(renderPassDescriptor);
     pass.setPipeline(pipeline);
 
-    for (const { scale, position, velocity, bindGroup, uniformBuffer, uniformValues } of objectInfos) {
-      position[0] += velocity[0] / 10;
-      position[1] += velocity[1] / 10;
-      console.log(position[0], position[1]);
+    for (const boid of boids) {
+      updateBoid(boid, aspect);
 
-      if (position[0] <= -1) position[0] = 1;
-      if (position[0] > 1) position[0] = -1;
-      if (position[1] <= -1) position[1] = 1;
-      if (position[1] > 1) position[1] = -1;
-
-      uniformValues.set([position[0], position[1]], kOffsetOffset);
-      uniformValues.set([velocity[0], velocity[1]], kVelocityOffset);
-      uniformValues.set([scale / aspect, scale], kScaleOffset);
-
-      device.queue.writeBuffer(uniformBuffer, 0, uniformValues);
-      pass.setBindGroup(0, bindGroup);
+      device.queue.writeBuffer(boid.uniformBuffer, 0, boid.uniformValues);
+      pass.setBindGroup(0, boid.bindGroup);
       pass.draw(3);
     }
     pass.end();
