@@ -23,15 +23,7 @@ const start = async () => {
   main(device);
 };
 
-const main = async (device: GPUDevice) => {
-  const canvas = document.querySelector("canvas")!;
-  const context = canvas.getContext("webgpu")!;
-  const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
-  context.configure({
-    device,
-    format: presentationFormat,
-  });
-
+const createRenderPipeline = (device: GPUDevice, presentationFormat: GPUTextureFormat) => {
   const boidModule = device.createShaderModule({
     label: 'boid shader',
     code: boidShader,
@@ -51,7 +43,12 @@ const main = async (device: GPUDevice) => {
     },
   });
 
+  return pipeline;
+};
+
+const createBoids = (device: GPUDevice, pipeline: GPURenderPipeline) => {
   const boids: Boid[] = [];
+
   for (let i = 0; i < kNumObjects; ++i) {
     const uniformBuffer = device.createBuffer({
       label: `static uniforms for obj: ${i}`,
@@ -76,6 +73,21 @@ const main = async (device: GPUDevice) => {
       ...createBoid(),
     });
   };
+
+  return boids;
+};
+
+const main = async (device: GPUDevice) => {
+  const canvas = document.querySelector("canvas")!;
+  const context = canvas.getContext("webgpu")!;
+  const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
+  context.configure({
+    device,
+    format: presentationFormat,
+  });
+
+  const pipeline = createRenderPipeline(device, presentationFormat);
+  const boids = createBoids(device, pipeline);
 
   const render = () => {
     const aspect = canvas.width / canvas.height;
