@@ -1,6 +1,7 @@
 import { Boid, bufferSize, createBoid, kNumObjects, kOffsetOffset, updateBoid } from "./boid";
 import boidShader from "./shaders/boid.wgsl?raw";
 import computeShader from "./shaders/compute.wgsl?raw";
+import { setFPSCounter } from "./utils";
 
 const createRenderPipeline = (device: GPUDevice, presentationFormat: GPUTextureFormat) => {
   const boidModule = device.createShaderModule({
@@ -97,6 +98,7 @@ const createComputePipeline = (device: GPUDevice) => {
 };
 
 const main = async (device: GPUDevice) => {
+  const infoElem = document.querySelector('#info');
   const canvas = document.querySelector("canvas")!;
   const context = canvas.getContext("webgpu")!;
   const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
@@ -109,7 +111,9 @@ const main = async (device: GPUDevice) => {
   const computePipeline = createComputePipeline(device);
   const boids = createBoids(device, renderPipeline, computePipeline);
 
-  const render = () => {
+  const render = (now: number) => {
+    setFPSCounter(now, infoElem);
+
     const aspect = canvas.width / canvas.height;
 
     const encoder = device.createCommandEncoder({ label: 'encoder' });
