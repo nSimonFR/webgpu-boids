@@ -1,5 +1,6 @@
 import { Boid, createBoid, kNumObjects, uniformBufferSize, updateBoid } from "./boid";
 import boidShader from "./shaders/boid.wgsl?raw";
+import computeShader from "./shaders/compute.wgsl?raw";
 
 const start = async () => {
   if (!navigator.gpu) {
@@ -77,6 +78,70 @@ const createBoids = (device: GPUDevice, pipeline: GPURenderPipeline) => {
   return boids;
 };
 
+const createComputePipeline = async (device: GPUDevice) => {
+  const computeModule = device.createShaderModule({
+    label: 'compute shader',
+    code: computeShader,
+  });
+
+  const pipeline = device.createComputePipeline({
+    label: 'doubling compute pipeline',
+    layout: 'auto',
+    compute: {
+      module: computeModule,
+      entryPoint: 'compute',
+    },
+  });
+
+  const input = new Float32Array([1, 3, 5]);
+
+  const workBuffer = device.createBuffer({
+    label: 'work buffer',
+    size: input.byteLength,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+  });
+
+  device.queue.writeBuffer(workBuffer, 0, input);
+
+  const resultBuffer = device.createBuffer({
+    label: 'result buffer',
+    size: input.byteLength,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+  });
+
+  const bindGroup = device.createBindGroup({
+    label: 'bindGroup for work buffer',
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: workBuffer } },
+    ],
+  });
+
+  const encoder = device.createCommandEncoder({
+    label: 'doubling encoder',
+  });
+  const pass = encoder.beginComputePass({
+    label: 'doubling compute pass',
+  });
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, bindGroup);
+  pass.dispatchWorkgroups(input.length);
+  pass.end();
+
+  encoder.copyBufferToBuffer(workBuffer, 0, resultBuffer, 0, resultBuffer.size);
+
+  const commandBuffer = encoder.finish();
+  device.queue.submit([commandBuffer]);
+
+  await resultBuffer.mapAsync(GPUMapMode.READ);
+  const result = new Float32Array(resultBuffer.getMappedRange());
+
+  console.log('input', input);
+  console.log('result', result);
+
+  resultBuffer.unmap();
+};
+
 const main = async (device: GPUDevice) => {
   const canvas = document.querySelector("canvas")!;
   const context = canvas.getContext("webgpu")!;
@@ -85,6 +150,8 @@ const main = async (device: GPUDevice) => {
     device,
     format: presentationFormat,
   });
+
+  await createComputePipeline(device);
 
   const pipeline = createRenderPipeline(device, presentationFormat);
   const boids = createBoids(device, pipeline);
