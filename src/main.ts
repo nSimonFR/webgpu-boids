@@ -1,4 +1,5 @@
-import firstShader from "./shaders/first.wgsl?raw";
+import fragmentShader from "./shaders/fragment.wgsl?raw";
+import vertexShader from "./shaders/vertex.wgsl?raw";
 
 const start = async () => {
   if (!navigator.gpu) {
@@ -14,9 +15,7 @@ const start = async () => {
   device.lost.then((info) => {
     console.error(`WebGPU device was lost: ${info.message}`);
 
-    // 'reason' will be 'destroyed' if we intentionally destroy the device.
     if (info.reason !== 'destroyed') {
-      // try again
       start();
     }
   });
@@ -25,7 +24,6 @@ const start = async () => {
 };
 
 const main = async (device: GPUDevice) => {
-  // Get a WebGPU context from the canvas and configure it
   const canvas = document.querySelector("canvas")!;
   const context = canvas.getContext("webgpu")!;
   const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
@@ -34,20 +32,25 @@ const main = async (device: GPUDevice) => {
     format: presentationFormat,
   });
 
-  const module = device.createShaderModule({
-    label: "our hardcoded red triangle shaders",
-    code: firstShader,
+  const vertexModule = device.createShaderModule({
+    label: 'vertex shader',
+    code: vertexShader,
+  });
+
+  const fragmentModule = device.createShaderModule({
+    label: 'fragment shader',
+    code: fragmentShader,
   });
 
   const pipeline = device.createRenderPipeline({
-    label: 'our hardcoded red triangle pipeline',
+    label: 'render pipeline',
     layout: 'auto',
     vertex: {
-      module,
+      module: vertexModule,
       entryPoint: 'vs',
     },
     fragment: {
-      module,
+      module: fragmentModule,
       entryPoint: 'fs',
       targets: [{ format: presentationFormat }],
     },
@@ -55,7 +58,7 @@ const main = async (device: GPUDevice) => {
 
   const render = () => {
     const renderPassDescriptor: GPURenderPassDescriptor = {
-      label: 'our basic canvas renderPass',
+      label: 'canvas renderPass',
       colorAttachments: [
         {
           view: context.getCurrentTexture().createView(),
@@ -66,13 +69,11 @@ const main = async (device: GPUDevice) => {
       ],
     };
 
-    // make a command encoder to start encoding commands
-    const encoder = device.createCommandEncoder({ label: 'our encoder' });
+    const encoder = device.createCommandEncoder({ label: 'encoder' });
 
-    // make a render pass encoder to encode render specific commands
     const pass = encoder.beginRenderPass(renderPassDescriptor);
     pass.setPipeline(pipeline);
-    pass.draw(3);  // call our vertex shader 3 times
+    pass.draw(3);
     pass.end();
 
     const commandBuffer = encoder.finish();
