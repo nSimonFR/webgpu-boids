@@ -64,6 +64,7 @@ const main = async (device: GPUDevice) => {
   type objectInfo = {
     scale: number,
     position: number[],
+    velocity: number[],
     uniformBuffer: GPUBuffer,
     uniformValues: Float32Array,
     bindGroup: GPUBindGroup,
@@ -71,10 +72,12 @@ const main = async (device: GPUDevice) => {
 
   const uniformBufferSize =
     2 * 4 + // offset
+    2 * 4 + // velocity
     2 * 4;  // scale
 
   const kOffsetOffset = 0;
-  const kScaleOffset = 2;
+  const kVelocityOffset = 2;
+  const kScaleOffset = 4;
 
   const kNumObjects = 50;
   const objectInfos: objectInfo[] = [];
@@ -89,6 +92,7 @@ const main = async (device: GPUDevice) => {
     const uniformValues = new Float32Array(uniformBufferSize / 4);
 
     const position = [rand(-0.9, 0.9), rand(-0.9, 0.9)];
+    const velocity = [rand(-0.1, 0.1), rand(-0.1, 0.1)];
 
     device.queue.writeBuffer(uniformBuffer, 0, uniformValues);
 
@@ -103,17 +107,14 @@ const main = async (device: GPUDevice) => {
     objectInfos.push({
       scale: rand(0.1, 0.2),
       position,
+      velocity,
       uniformBuffer,
       uniformValues,
       bindGroup,
     });
   };
 
-  let i = 0;
   const render = () => {
-    i++;
-    // console.log('render', i);
-
     const aspect = canvas.width / canvas.height;
 
     const renderPassDescriptor: GPURenderPassDescriptor = {
@@ -133,8 +134,18 @@ const main = async (device: GPUDevice) => {
     const pass = encoder.beginRenderPass(renderPassDescriptor);
     pass.setPipeline(pipeline);
 
-    for (const { scale, position, bindGroup, uniformBuffer, uniformValues } of objectInfos) {
-      uniformValues.set([position[0], position[1] + (i / 1000)], kOffsetOffset);
+    for (const { scale, position, velocity, bindGroup, uniformBuffer, uniformValues } of objectInfos) {
+      position[0] += velocity[0] / 10;
+      position[1] += velocity[1] / 10;
+      console.log(position[0], position[1]);
+
+      if (position[0] <= -1) position[0] = 1;
+      if (position[0] > 1) position[0] = -1;
+      if (position[1] <= -1) position[1] = 1;
+      if (position[1] > 1) position[1] = -1;
+
+      uniformValues.set([position[0], position[1]], kOffsetOffset);
+      uniformValues.set([velocity[0], velocity[1]], kVelocityOffset);
       uniformValues.set([scale / aspect, scale], kScaleOffset);
 
       device.queue.writeBuffer(uniformBuffer, 0, uniformValues);
