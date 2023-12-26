@@ -1,8 +1,12 @@
-@group(0) @binding(0) var<storage, read_write> data: array<f32>;
+struct BoidStruct {
+  offset: vec2f,
+  velocity: vec2f,
+  scale: vec2f,
+};
+
+@group(0) @binding(0) var<storage, read> boidStruct: BoidStruct;
   
-@compute @workgroup_size(1) fn compute(
-  @builtin(global_invocation_id) id: vec3<u32>
-) {
-  let i = id.x;
-  data[i] = data[i] * 2.0;
+@compute @workgroup_size(1)
+fn compute(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
+  // boidStruct.offset.x += 0.01;
 }

@@ -1,28 +1,6 @@
-import { Boid, createBoid, kNumObjects, uniformBufferSize, updateBoid } from "./boid";
+import { Boid, bufferSize, createBoid, kNumObjects, kOffsetOffset, updateBoid } from "./boid";
 import boidShader from "./shaders/boid.wgsl?raw";
 import computeShader from "./shaders/compute.wgsl?raw";
-
-const start = async () => {
-  if (!navigator.gpu) {
-    throw new Error(`WebGPU is not supported in your browser`);
-  }
-
-  const adapter = await navigator.gpu?.requestAdapter();
-  if (!adapter) {
-    throw new Error("WebGPU disabled");
-  }
-
-  const device = await adapter?.requestDevice();
-  device.lost.then((info) => {
-    console.error(`WebGPU device was lost: ${info.message}`);
-
-    if (info.reason !== 'destroyed') {
-      start();
-    }
-  });
-
-  main(device);
-};
 
 const createRenderPipeline = (device: GPUDevice, presentationFormat: GPUTextureFormat) => {
   const boidModule = device.createShaderModule({
@@ -47,45 +25,57 @@ const createRenderPipeline = (device: GPUDevice, presentationFormat: GPUTextureF
   return pipeline;
 };
 
-const createBoids = (device: GPUDevice, pipeline: GPURenderPipeline) => {
+const createBoids = (device: GPUDevice, renderPipeline: GPURenderPipeline, computeBindline: GPUComputePipeline) => {
   const boids: Boid[] = [];
 
   for (let i = 0; i < kNumObjects; ++i) {
-    const uniformBuffer = device.createBuffer({
+    const buffer = device.createBuffer({
       label: `static uniforms for obj: ${i}`,
-      size: uniformBufferSize,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      size: bufferSize,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
-    const uniformValues = new Float32Array(uniformBufferSize / 4);
+    const values = new Float32Array(bufferSize / 4);
 
-    const bindGroup = device.createBindGroup({
-      label: `bind group for obj: ${i}`,
-      layout: pipeline.getBindGroupLayout(0),
+    const renderBindGroup = device.createBindGroup({
+      label: `render bind group for obj: ${i}`,
+      layout: renderPipeline.getBindGroupLayout(0),
       entries: [
-        { binding: 0, resource: { buffer: uniformBuffer } },
+        { binding: 0, resource: { buffer } },
       ],
     });
 
+    const computeBindGroup = device.createBindGroup({
+      label: `compute bind group for obj: ${i}`,
+      layout: computeBindline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer } },
+      ],
+    });
+
+    const boid = createBoid();
+    values.set([boid.position[0], boid.position[1]], kOffsetOffset);
+
     boids.push({
-      uniformBuffer,
-      uniformValues,
-      bindGroup,
-      ...createBoid(),
+      buffer,
+      values,
+      renderBindGroup,
+      computeBindGroup,
+      ...boid,
     });
   };
 
   return boids;
 };
 
-const createComputePipeline = async (device: GPUDevice) => {
+const createComputePipeline = (device: GPUDevice) => {
   const computeModule = device.createShaderModule({
     label: 'compute shader',
     code: computeShader,
   });
 
   const pipeline = device.createComputePipeline({
-    label: 'doubling compute pipeline',
+    label: 'compute pipeline',
     layout: 'auto',
     compute: {
       module: computeModule,
@@ -93,53 +83,17 @@ const createComputePipeline = async (device: GPUDevice) => {
     },
   });
 
-  const input = new Float32Array([1, 3, 5]);
+  // const input = new Float32Array([1, 3, 5]);
 
-  const workBuffer = device.createBuffer({
-    label: 'work buffer',
-    size: input.byteLength,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-  });
+  // const workBuffer = device.createBuffer({
+  //   label: 'work buffer',
+  //   size: input.byteLength,
+  //   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+  // });
 
-  device.queue.writeBuffer(workBuffer, 0, input);
+  // device.queue.writeBuffer(workBuffer, 0, input);
 
-  const resultBuffer = device.createBuffer({
-    label: 'result buffer',
-    size: input.byteLength,
-    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
-  });
-
-  const bindGroup = device.createBindGroup({
-    label: 'bindGroup for work buffer',
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: { buffer: workBuffer } },
-    ],
-  });
-
-  const encoder = device.createCommandEncoder({
-    label: 'doubling encoder',
-  });
-  const pass = encoder.beginComputePass({
-    label: 'doubling compute pass',
-  });
-  pass.setPipeline(pipeline);
-  pass.setBindGroup(0, bindGroup);
-  pass.dispatchWorkgroups(input.length);
-  pass.end();
-
-  encoder.copyBufferToBuffer(workBuffer, 0, resultBuffer, 0, resultBuffer.size);
-
-  const commandBuffer = encoder.finish();
-  device.queue.submit([commandBuffer]);
-
-  await resultBuffer.mapAsync(GPUMapMode.READ);
-  const result = new Float32Array(resultBuffer.getMappedRange());
-
-  console.log('input', input);
-  console.log('result', result);
-
-  resultBuffer.unmap();
+  return pipeline;
 };
 
 const main = async (device: GPUDevice) => {
@@ -151,42 +105,53 @@ const main = async (device: GPUDevice) => {
     format: presentationFormat,
   });
 
-  await createComputePipeline(device);
-
-  const pipeline = createRenderPipeline(device, presentationFormat);
-  const boids = createBoids(device, pipeline);
+  const renderPipeline = createRenderPipeline(device, presentationFormat);
+  const computePipeline = createComputePipeline(device);
+  const boids = createBoids(device, renderPipeline, computePipeline);
 
   const render = () => {
     const aspect = canvas.width / canvas.height;
 
-    const renderPassDescriptor: GPURenderPassDescriptor = {
-      label: 'canvas renderPass',
-      colorAttachments: [
-        {
-          view: context.getCurrentTexture().createView(),
-          clearValue: [0.3, 0.3, 0.3, 1],
-          loadOp: 'clear',
-          storeOp: 'store',
-        },
-      ],
-    };
-
     const encoder = device.createCommandEncoder({ label: 'encoder' });
+    {
+      const renderPassDescriptor: GPURenderPassDescriptor = {
+        label: 'canvas renderPass',
+        colorAttachments: [
+          {
+            view: context.getCurrentTexture().createView(),
+            clearValue: [0.3, 0.3, 0.3, 1],
+            loadOp: 'clear',
+            storeOp: 'store',
+          },
+        ],
+      };
 
-    const pass = encoder.beginRenderPass(renderPassDescriptor);
-    pass.setPipeline(pipeline);
-
-    for (const boid of boids) {
-      updateBoid(boid, aspect);
-
-      device.queue.writeBuffer(boid.uniformBuffer, 0, boid.uniformValues);
-      pass.setBindGroup(0, boid.bindGroup);
-      pass.draw(3);
+      const pass = encoder.beginRenderPass(renderPassDescriptor);
+      pass.setPipeline(renderPipeline);
+      for (const boid of boids) {
+        updateBoid(boid, aspect);
+        device.queue.writeBuffer(boid.buffer, 0, boid.values);
+        pass.setBindGroup(0, boid.renderBindGroup);
+        pass.draw(3);
+      }
+      pass.end();
     }
-    pass.end();
+    {
+      const computePassDescriptor: GPUComputePassDescriptor = {};
 
-    const commandBuffer = encoder.finish();
-    device.queue.submit([commandBuffer]);
+      const pass = encoder.beginComputePass(computePassDescriptor);
+      pass.setPipeline(computePipeline);
+      for (const boid of boids) {
+        device.queue.writeBuffer(boid.buffer, 0, boid.values);
+        pass.setBindGroup(0, boid.computeBindGroup);
+        pass.dispatchWorkgroups(1); // TODO
+      }
+      pass.end();
+    }
+
+    // commandEncoder.resolveQuerySet(querySet, 0, 4, resolveBuffer, 0);
+
+    device.queue.submit([encoder.finish()]);
 
     requestAnimationFrame(render);
   };
@@ -204,6 +169,28 @@ const main = async (device: GPUDevice) => {
     }
   });
   observer.observe(canvas);
+};
+
+const start = async () => {
+  if (!navigator.gpu) {
+    throw new Error(`WebGPU is not supported in your browser`);
+  }
+
+  const adapter = await navigator.gpu?.requestAdapter();
+  if (!adapter) {
+    throw new Error("WebGPU disabled");
+  }
+
+  const device = await adapter?.requestDevice();
+  device.lost.then((info) => {
+    console.error(`WebGPU device was lost: ${info.message}`);
+
+    if (info.reason !== 'destroyed') {
+      start();
+    }
+  });
+
+  main(device);
 };
 
 start();
