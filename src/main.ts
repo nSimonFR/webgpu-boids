@@ -160,7 +160,7 @@ const main = async (device: GPUDevice) => {
       const pass = encoder.beginComputePass(computePassDescriptor);
       pass.setPipeline(computePipeline);
       pass.setBindGroup(0, computeBindGroup);
-      pass.dispatchWorkgroups(1);
+      pass.dispatchWorkgroups((kNumObjects / 128) + 1);
       pass.end();
     }
     device.queue.submit([encoder.finish()]);

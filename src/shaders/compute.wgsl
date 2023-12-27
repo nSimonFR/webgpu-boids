@@ -7,8 +7,20 @@ struct BoidStruct {
 @group(0) @binding(0)
 var<storage, read_write> boidStructs: array<BoidStruct>;
 
-@compute @workgroup_size(1)
+@compute @workgroup_size(128)
 fn compute(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
-  boidStructs[0].offset.x += 0.01;
-  // boidStruct.offset.x += 0.01;
+  boidStructs[GlobalInvocationID.x].offset += boidStructs[GlobalInvocationID.x].velocity;
+
+  if (boidStructs[GlobalInvocationID.x].offset.x > 1.0) {
+    boidStructs[GlobalInvocationID.x].offset.x = -1.0;
+  }
+  if (boidStructs[GlobalInvocationID.x].offset.x < -1.0) {
+    boidStructs[GlobalInvocationID.x].offset.x = 1.0;
+  }
+  if (boidStructs[GlobalInvocationID.x].offset.y > 1.0) {
+    boidStructs[GlobalInvocationID.x].offset.y = -1.0;
+  }
+  if (boidStructs[GlobalInvocationID.x].offset.y < -1.0) {
+    boidStructs[GlobalInvocationID.x].offset.y = 1.0;
+  }
 }

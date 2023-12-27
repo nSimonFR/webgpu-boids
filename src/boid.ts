@@ -1,6 +1,6 @@
 import { rand } from "./utils";
 
-export const kNumObjects = 5000;
+export const kNumObjects = 5000000;
 
 export const bufferSize =
   2 * 4 + // offset
@@ -14,8 +14,8 @@ export const kTotalOffset = kScaleOffset + 2;
 
 export const createBoid = () => {
   const position = [rand(-0.9, 0.9), rand(-0.9, 0.9)];
-  const velocity = [rand(-0.1, 0.1), rand(-0.1, 0.1)];
-  const scaling = rand(0.05, 0.10);
+  const velocity = [rand(-0.01, 0.01), rand(-0.01, 0.01)];
+  const scaling = rand(0.001, 0.002);
   const scale = [scaling / 10, scaling];
   return [...position, ...velocity, ...scale];
 };
