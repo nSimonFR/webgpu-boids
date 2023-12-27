@@ -17,9 +17,9 @@ struct BoidOutput {
   @builtin(instance_index) instanceIndex: u32,
 ) -> BoidOutput {
   let pos = array(
-    vec2f( 0.0,  0.5),  // top center
-    vec2f(-0.3, -0.5),  // bottom left
-    vec2f( 0.3, -0.5)   // bottom right
+    vec2f( 0.0,  0.1),  // top center
+    vec2f(-0.5, -0.5),  // bottom left
+    vec2f( 0.5, -0.5)   // bottom right
   )[vertexIndex];
 
   let boidStruct = boidStructs[instanceIndex];
