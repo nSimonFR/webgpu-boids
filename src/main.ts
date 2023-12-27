@@ -1,4 +1,4 @@
-import { Boid, bufferSize, createBoid, kNumObjects, kOffsetOffset, updateBoid } from "./boid";
+import { bufferSize, createBoid, kNumObjects, kTotalOffset } from "./boid";
 import boidShader from "./shaders/boid.wgsl?raw";
 import computeShader from "./shaders/compute.wgsl?raw";
 import { setFPSCounter } from "./utils";
@@ -24,49 +24,6 @@ const createRenderPipeline = (device: GPUDevice, presentationFormat: GPUTextureF
   });
 
   return pipeline;
-};
-
-const createBoids = (device: GPUDevice, renderPipeline: GPURenderPipeline, computeBindline: GPUComputePipeline) => {
-  const boids: Boid[] = [];
-
-  for (let i = 0; i < kNumObjects; ++i) {
-    const buffer = device.createBuffer({
-      label: `static uniforms for obj: ${i}`,
-      size: bufferSize,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    });
-
-    const values = new Float32Array(bufferSize / 4);
-
-    const renderBindGroup = device.createBindGroup({
-      label: `render bind group for obj: ${i}`,
-      layout: renderPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer } },
-      ],
-    });
-
-    const computeBindGroup = device.createBindGroup({
-      label: `compute bind group for obj: ${i}`,
-      layout: computeBindline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer } },
-      ],
-    });
-
-    const boid = createBoid();
-    values.set([boid.position[0], boid.position[1]], kOffsetOffset);
-
-    boids.push({
-      buffer,
-      values,
-      renderBindGroup,
-      computeBindGroup,
-      ...boid,
-    });
-  };
-
-  return boids;
 };
 
 const createComputePipeline = (device: GPUDevice) => {
@@ -97,6 +54,39 @@ const createComputePipeline = (device: GPUDevice) => {
   return pipeline;
 };
 
+const createBoids = (device: GPUDevice, renderPipeline: GPURenderPipeline, computePipeline: GPUComputePipeline) => {
+  const values = new Float32Array(bufferSize * kNumObjects / 4);
+
+  const buffer = device.createBuffer({
+    label: `static buffer`,
+    size: values.byteLength,
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  const renderBindGroup = device.createBindGroup({
+    label: `render bind group`,
+    layout: renderPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer } },
+    ],
+  });
+
+  const computeBindGroup = device.createBindGroup({
+    label: `compute bind group`,
+    layout: computePipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer } },
+    ],
+  });
+
+  for (let i = 0; i < kNumObjects; ++i) {
+    values.set(createBoid(), i * kTotalOffset)
+  };
+  device.queue.writeBuffer(buffer, 0, values);
+
+  return { buffer, renderBindGroup, computeBindGroup };
+};
+
 const main = async (device: GPUDevice) => {
   const infoElem = document.querySelector('#info');
   const canvas = document.querySelector("canvas")!;
@@ -109,12 +99,12 @@ const main = async (device: GPUDevice) => {
 
   const renderPipeline = createRenderPipeline(device, presentationFormat);
   const computePipeline = createComputePipeline(device);
-  const boids = createBoids(device, renderPipeline, computePipeline);
+  const { renderBindGroup, computeBindGroup } = createBoids(device, renderPipeline, computePipeline);
 
   const render = (now: number) => {
     setFPSCounter(now, infoElem);
 
-    const aspect = canvas.width / canvas.height;
+    const aspect = canvas.width / canvas.height; // TODO
 
     const encoder = device.createCommandEncoder({ label: 'encoder' });
     {
@@ -132,25 +122,18 @@ const main = async (device: GPUDevice) => {
 
       const pass = encoder.beginRenderPass(renderPassDescriptor);
       pass.setPipeline(renderPipeline);
-      for (const boid of boids) {
-        updateBoid(boid, aspect);
-        device.queue.writeBuffer(boid.buffer, 0, boid.values);
-        pass.setBindGroup(0, boid.renderBindGroup);
-        pass.draw(3);
-      }
+      pass.setBindGroup(0, renderBindGroup);
+      pass.draw(3, kNumObjects, 0, 0);
       pass.end();
     }
     {
-      const computePassDescriptor: GPUComputePassDescriptor = {};
+      // const computePassDescriptor: GPUComputePassDescriptor = {};
 
-      const pass = encoder.beginComputePass(computePassDescriptor);
-      pass.setPipeline(computePipeline);
-      for (const boid of boids) {
-        device.queue.writeBuffer(boid.buffer, 0, boid.values);
-        pass.setBindGroup(0, boid.computeBindGroup);
-        pass.dispatchWorkgroups(1); // TODO
-      }
-      pass.end();
+      // const pass = encoder.beginComputePass(computePassDescriptor);
+      // pass.setPipeline(computePipeline);
+      // pass.setBindGroup(0, computeBindGroup);
+      // pass.dispatchWorkgroups(1); // TODO
+      // pass.end();
     }
 
     // commandEncoder.resolveQuerySet(querySet, 0, 4, resolveBuffer, 0);
