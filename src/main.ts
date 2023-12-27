@@ -3,7 +3,23 @@ import boidShader from "./shaders/boid.wgsl?raw";
 import computeShader from "./shaders/compute.wgsl?raw";
 import { setFPSCounter } from "./utils";
 
-const createRenderPipeline = (device: GPUDevice, presentationFormat: GPUTextureFormat) => {
+const createRenderPipeline = (device: GPUDevice, buffer: GPUBuffer, presentationFormat: GPUTextureFormat) => {
+  const bindGroupLayout = device.createBindGroupLayout({
+    entries: [{
+      binding: 0,
+      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+      buffer: {
+        type: 'read-only-storage',
+      },
+    }]
+  });
+
+  const pipelineLayout = device.createPipelineLayout({
+    bindGroupLayouts: [
+      bindGroupLayout,
+    ]
+  });
+
   const boidModule = device.createShaderModule({
     label: 'boid shader',
     code: boidShader,
@@ -11,7 +27,7 @@ const createRenderPipeline = (device: GPUDevice, presentationFormat: GPUTextureF
 
   const pipeline = device.createRenderPipeline({
     label: 'render pipeline',
-    layout: 'auto',
+    layout: pipelineLayout,
     vertex: {
       module: boidModule,
       entryPoint: 'vertex_main',
@@ -23,10 +39,34 @@ const createRenderPipeline = (device: GPUDevice, presentationFormat: GPUTextureF
     },
   });
 
-  return pipeline;
+  const bindGroup = device.createBindGroup({
+    label: `render bind group`,
+    layout: bindGroupLayout,
+    entries: [
+      { binding: 0, resource: { buffer } },
+    ],
+  });
+
+  return { pipeline, bindGroup };
 };
 
-const createComputePipeline = (device: GPUDevice) => {
+const createComputePipeline = (device: GPUDevice, buffer: GPUBuffer) => {
+  const bindGroupLayout = device.createBindGroupLayout({
+    entries: [{
+      binding: 0,
+      visibility: GPUShaderStage.COMPUTE,
+      buffer: {
+        type: 'storage',
+      },
+    }]
+  });
+
+  const pipelineLayout = device.createPipelineLayout({
+    bindGroupLayouts: [
+      bindGroupLayout,
+    ]
+  });
+
   const computeModule = device.createShaderModule({
     label: 'compute shader',
     code: computeShader,
@@ -34,49 +74,31 @@ const createComputePipeline = (device: GPUDevice) => {
 
   const pipeline = device.createComputePipeline({
     label: 'compute pipeline',
-    layout: 'auto',
+    layout: pipelineLayout,
     compute: {
       module: computeModule,
       entryPoint: 'compute',
     },
   });
 
-  // const input = new Float32Array([1, 3, 5]);
+  const bindGroup = device.createBindGroup({
+    label: `compute bind group`,
+    layout: bindGroupLayout,
+    entries: [
+      { binding: 0, resource: { buffer } },
+    ],
+  });
 
-  // const workBuffer = device.createBuffer({
-  //   label: 'work buffer',
-  //   size: input.byteLength,
-  //   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-  // });
-
-  // device.queue.writeBuffer(workBuffer, 0, input);
-
-  return pipeline;
+  return { pipeline, bindGroup };
 };
 
-const createBoids = (device: GPUDevice, renderPipeline: GPURenderPipeline, computePipeline: GPUComputePipeline) => {
+const createBoidsBuffer = (device: GPUDevice) => {
   const values = new Float32Array(bufferSize * kNumObjects / 4);
 
   const buffer = device.createBuffer({
     label: `static buffer`,
     size: values.byteLength,
-    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-  });
-
-  const renderBindGroup = device.createBindGroup({
-    label: `render bind group`,
-    layout: renderPipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: { buffer } },
-    ],
-  });
-
-  const computeBindGroup = device.createBindGroup({
-    label: `compute bind group`,
-    layout: computePipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: { buffer } },
-    ],
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
   });
 
   for (let i = 0; i < kNumObjects; ++i) {
@@ -84,7 +106,7 @@ const createBoids = (device: GPUDevice, renderPipeline: GPURenderPipeline, compu
   };
   device.queue.writeBuffer(buffer, 0, values);
 
-  return { buffer, renderBindGroup, computeBindGroup };
+  return buffer;
 };
 
 const main = async (device: GPUDevice) => {
@@ -97,9 +119,15 @@ const main = async (device: GPUDevice) => {
     format: presentationFormat,
   });
 
-  const renderPipeline = createRenderPipeline(device, presentationFormat);
-  const computePipeline = createComputePipeline(device);
-  const { renderBindGroup, computeBindGroup } = createBoids(device, renderPipeline, computePipeline);
+  const buffer = createBoidsBuffer(device);
+  const {
+    pipeline: renderPipeline,
+    bindGroup: renderBindGroup,
+  } = createRenderPipeline(device, buffer, presentationFormat);
+  const {
+    pipeline: computePipeline,
+    bindGroup: computeBindGroup,
+  } = createComputePipeline(device, buffer);
 
   const render = (now: number) => {
     setFPSCounter(now, infoElem);
@@ -127,17 +155,14 @@ const main = async (device: GPUDevice) => {
       pass.end();
     }
     {
-      // const computePassDescriptor: GPUComputePassDescriptor = {};
+      const computePassDescriptor: GPUComputePassDescriptor = {};
 
-      // const pass = encoder.beginComputePass(computePassDescriptor);
-      // pass.setPipeline(computePipeline);
-      // pass.setBindGroup(0, computeBindGroup);
-      // pass.dispatchWorkgroups(1); // TODO
-      // pass.end();
+      const pass = encoder.beginComputePass(computePassDescriptor);
+      pass.setPipeline(computePipeline);
+      pass.setBindGroup(0, computeBindGroup);
+      pass.dispatchWorkgroups(1);
+      pass.end();
     }
-
-    // commandEncoder.resolveQuerySet(querySet, 0, 4, resolveBuffer, 0);
-
     device.queue.submit([encoder.finish()]);
 
     requestAnimationFrame(render);
