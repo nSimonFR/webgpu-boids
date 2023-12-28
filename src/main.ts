@@ -132,7 +132,7 @@ const main = async (device: GPUDevice) => {
   const render = (now: number) => {
     setFPSCounter(now, infoElem);
 
-    const aspect = canvas.width / canvas.height; // TODO
+    // const aspect = canvas.width / canvas.height; // TODO
 
     const encoder = device.createCommandEncoder({ label: 'encoder' });
     {
