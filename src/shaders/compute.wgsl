@@ -13,7 +13,7 @@ fn compute(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
 
   var paramsDeltaT = 0.01;
   var paramsRule1Distance = 0.1;
-  var paramsRule2Distance = 0.025;
+  var paramsRule2Distance = 0.01;
   var paramsRule3Distance = 0.025;
   var paramsRule1Scale = 0.02;
   var paramsRule2Scale = 0.05;
