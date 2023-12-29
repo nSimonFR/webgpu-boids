@@ -1,5 +1,5 @@
 struct Boid {
-  offset: vec2f,
+  position: vec2f,
   velocity: vec2f,
   scale: vec2f,
 };
@@ -31,14 +31,14 @@ struct Output {
 
   // let color = (1 / angl) / 30;
   let color = vec4(
-    1.0 - sin(angle + 1.0) - boid.offset.y,
-    pos.x * 100.0 - boid.offset.y + 0.1,
-    boid.offset.x + cos(angle + 0.5),
+    1.0 - sin(angle + 1.0) - boid.position.y,
+    pos.x * 100.0 - boid.position.y + 0.1,
+    boid.position.x + cos(angle + 0.5),
     1.0,
   );
 
   return Output(
-    vec4f(posRotated * boid.scale + boid.offset, 0.0, 1.0),
+    vec4f(posRotated * boid.scale + boid.position, 0.0, 1.0),
     // vec4f(0, color, color, 1),
     color
   );

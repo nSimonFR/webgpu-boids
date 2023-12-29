@@ -3,7 +3,7 @@ import { rand } from "./utils";
 export const kNumObjects = 20000;
 
 export const bufferSize =
-  2 * 4 + // offset
+  2 * 4 + // position
   2 * 4 + // velocity
   2 * 4;  // scale
 

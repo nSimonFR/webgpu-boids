@@ -1,5 +1,5 @@
 struct BoidStruct {
-  offset: vec2f,
+  position: vec2f,
   velocity: vec2f,
   scale: vec2f,
 };
@@ -19,7 +19,7 @@ fn compute(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   var paramsRule2Scale = 0.05;
   var paramsRule3Scale = 0.005;
 
-  var vPos = boidStructs[index].offset;
+  var vPos = boidStructs[index].position;
   var vVel = boidStructs[index].velocity;
   var cMass = vec2(0.0);
   var cVel = vec2(0.0);
@@ -34,7 +34,7 @@ fn compute(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
       continue;
     }
 
-    pos = boidStructs[i].offset.xy;
+    pos = boidStructs[i].position.xy;
     vel = boidStructs[i].velocity.xy;
     if (distance(pos, vPos) < paramsRule1Distance) {
       cMass += pos;
@@ -77,6 +77,6 @@ fn compute(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
     vPos.y = -1.0;
   }
 
-  boidStructs[index].offset = vPos;
+  boidStructs[index].position = vPos;
   boidStructs[index].velocity = vVel;
 }
