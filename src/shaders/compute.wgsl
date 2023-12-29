@@ -4,20 +4,25 @@ struct BoidStruct {
   scale: vec2f,
 };
 
+struct Params {
+  deltaT: f32,
+  rule1Distance: f32,
+  rule2Distance: f32,
+  rule3Distance: f32,
+  rule1Scale: f32,
+  rule2Scale: f32,
+  rule3Scale: f32,
+};
+
 @group(0) @binding(0)
 var<storage, read_write> boidStructs: array<BoidStruct>;
+
+@group(0) @binding(1)
+var<uniform> params: Params;
 
 @compute @workgroup_size(128)
 fn compute(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   var index = GlobalInvocationID.x;
-
-  var paramsDeltaT = 0.01;
-  var paramsRule1Distance = 0.1;
-  var paramsRule2Distance = 0.01;
-  var paramsRule3Distance = 0.025;
-  var paramsRule1Scale = 0.02;
-  var paramsRule2Scale = 0.05;
-  var paramsRule3Scale = 0.005;
 
   var vPos = boidStructs[index].position;
   var vVel = boidStructs[index].velocity;
@@ -36,14 +41,14 @@ fn compute(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
 
     pos = boidStructs[i].position.xy;
     vel = boidStructs[i].velocity.xy;
-    if (distance(pos, vPos) < paramsRule1Distance) {
+    if (distance(pos, vPos) < params.rule1Distance) {
       cMass += pos;
       cMassCount++;
     }
-    if (distance(pos, vPos) < paramsRule2Distance) {
+    if (distance(pos, vPos) < params.rule2Distance) {
       colVel -= pos - vPos;
     }
-    if (distance(pos, vPos) < paramsRule3Distance) {
+    if (distance(pos, vPos) < params.rule3Distance) {
       cVel += vel;
       cVelCount++;
     }
@@ -55,13 +60,13 @@ fn compute(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   if (cVelCount > 0) {
     cVel /= f32(cVelCount);
   }
-  vVel += (cMass * paramsRule1Scale) + (colVel * paramsRule2Scale) + (cVel * paramsRule3Scale);
+  vVel += (cMass * params.rule1Scale) + (colVel * params.rule2Scale) + (cVel * params.rule3Scale);
 
   // clamp velocity for a more pleasing simulation
   vVel = normalize(vVel) * clamp(length(vVel), 0.0, 0.1);
 
   // kinematic update
-  vPos = vPos + (vVel * paramsDeltaT);
+  vPos = vPos + (vVel * params.deltaT);
 
   // Wrap around boundary
   if (vPos.x < -1.0) {

@@ -18,8 +18,8 @@ struct Output {
 ) -> Output {
   let pos = array(
     vec2f( 0.0,  0.1),  // top center
-    vec2f(-0.2, -0.2),  // bottom left
-    vec2f( 0.2, -0.2)   // bottom right
+    vec2f(-0.1, -0.1),  // bottom left
+    vec2f( 0.1, -0.1)   // bottom right
   )[vertexIndex];
 
   let boid = boids[instanceIndex];

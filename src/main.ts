@@ -1,9 +1,9 @@
-import { bufferSize, createBoid, kNumObjects, kTotalOffset } from "./boid";
+import { boidsParams, bufferSize, createBoid, kNumObjects, kTotalOffset } from "./boid";
 import boidShader from "./shaders/boid.wgsl?raw";
 import computeShader from "./shaders/compute.wgsl?raw";
 import { setFPSCounter } from "./utils";
 
-const createRenderPipeline = (device: GPUDevice, buffer: GPUBuffer, presentationFormat: GPUTextureFormat) => {
+const createRenderPipeline = (device: GPUDevice, presentationFormat: GPUTextureFormat, buffer: GPUBuffer) => {
   const bindGroupLayout = device.createBindGroupLayout({
     entries: [{
       binding: 0,
@@ -50,13 +50,19 @@ const createRenderPipeline = (device: GPUDevice, buffer: GPUBuffer, presentation
   return { pipeline, bindGroup };
 };
 
-const createComputePipeline = (device: GPUDevice, buffer: GPUBuffer) => {
+const createComputePipeline = (device: GPUDevice, boidsBuffer: GPUBuffer, paramsBuffer: GPUBuffer) => {
   const bindGroupLayout = device.createBindGroupLayout({
     entries: [{
       binding: 0,
       visibility: GPUShaderStage.COMPUTE,
       buffer: {
         type: 'storage',
+      },
+    }, {
+      binding: 1,
+      visibility: GPUShaderStage.COMPUTE,
+      buffer: {
+        type: 'uniform'
       },
     }]
   });
@@ -85,7 +91,8 @@ const createComputePipeline = (device: GPUDevice, buffer: GPUBuffer) => {
     label: `compute bind group`,
     layout: bindGroupLayout,
     entries: [
-      { binding: 0, resource: { buffer } },
+      { binding: 0, resource: { buffer: boidsBuffer } },
+      { binding: 1, resource: { buffer: paramsBuffer } },
     ],
   });
 
@@ -96,7 +103,7 @@ const createBoidsBuffer = (device: GPUDevice) => {
   const values = new Float32Array(bufferSize * kNumObjects / 4);
 
   const buffer = device.createBuffer({
-    label: `static buffer`,
+    label: `boids buffer`,
     size: values.byteLength,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
   });
@@ -109,6 +116,26 @@ const createBoidsBuffer = (device: GPUDevice) => {
   return buffer;
 };
 
+const createParamsBuffer = (device: GPUDevice) => {
+  const values = new Float32Array(7 * 4);
+
+  const buffer = device.createBuffer({
+    label: `params buffer`,
+    size: values.byteLength,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+
+  values.set(Object.values(boidsParams), 0);
+  device.queue.writeBuffer(buffer, 0, values);
+
+  return buffer;
+};
+
+const createBoidsBuffers = (device: GPUDevice) => ({
+  boids: createBoidsBuffer(device),
+  params: createParamsBuffer(device),
+});
+
 const main = async (device: GPUDevice) => {
   const infoElem = document.querySelector('#info');
   const canvas = document.querySelector("canvas")!;
@@ -119,15 +146,15 @@ const main = async (device: GPUDevice) => {
     format: presentationFormat,
   });
 
-  const buffer = createBoidsBuffer(device);
+  const { boids, params } = createBoidsBuffers(device);
   const {
     pipeline: renderPipeline,
     bindGroup: renderBindGroup,
-  } = createRenderPipeline(device, buffer, presentationFormat);
+  } = createRenderPipeline(device, presentationFormat, boids);
   const {
     pipeline: computePipeline,
     bindGroup: computeBindGroup,
-  } = createComputePipeline(device, buffer);
+  } = createComputePipeline(device, boids, params);
 
   const render = (now: number) => {
     setFPSCounter(now, infoElem);
