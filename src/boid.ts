@@ -1,40 +1,52 @@
 import { rand } from "./utils";
 
-export const kNumObjects = 20000;
-export const boidsParams = {
-  deltaT: 0.02,
-  rule1Distance: 0.1,
-  rule2Distance: 0.01,
-  rule3Distance: 0.025,
-  rule1Scale: 0.02,
-  rule2Scale: 0.05,
-  rule3Scale: 0.005,
+// Layout of one boid in the storage buffers (must match the WGSL struct).
+// pos(2) vel(2) size tint seed pad
+export const FLOATS_PER_BOID = 8;
+
+// Fixed palette lives in boid.wgsl; these are the odds of each entry.
+const TINT_WEIGHTS = [0.45, 0.3, 0.2, 0.05];
+const SIZE_TIERS = [
+  { weight: 0.7, size: 0.8 },
+  { weight: 0.25, size: 1.15 },
+  { weight: 0.05, size: 1.5 },
+];
+
+const pick = (weights: number[]) => {
+  let r = Math.random();
+  for (let i = 0; i < weights.length; i += 1) {
+    r -= weights[i];
+    if (r <= 0) return i;
+  }
+  return weights.length - 1;
 };
 
-export const createBoid = () => {
-  const position = [rand(-0.9, 0.9), rand(-0.9, 0.9)];
-  const velocity = [rand(-0.01, 0.01), rand(-0.01, 0.01)];
-  const scaling = 0.05;
-  const scale = [scaling / 10, scaling];
-  return [...position, ...velocity, ...scale];
-};
+// Density-based count: about one boid per 900 CSS px², never a flat 20k.
+export const boidCount = (width: number, height: number, min = 200, max = 2000, perPx = 900) =>
+  Math.round(Math.min(max, Math.max(min, (width * height) / perPx)));
 
-export const bufferSize =
-  2 * 4 + // position
-  2 * 4 + // velocity
-  2 * 4;  // scale
-
-export const kOffsetOffset = 0;
-export const kVelocityOffset = kOffsetOffset + 2;
-export const kScaleOffset = kVelocityOffset + 2;
-export const kTotalOffset = kScaleOffset + 2;
-
-export type Boid = {
-  scale: number,
-  position: number[],
-  velocity: number[],
-  buffer: GPUBuffer,
-  values: Float32Array,
-  renderBindGroup: GPUBindGroup,
-  computeBindGroup: GPUBindGroup,
+// Spawn over the whole screen, already flying roughly the same way
+// (shared heading +/- ~70°), so the flock starts calm.
+export const spawnBoids = (count: number, width: number, height: number) => {
+  const data = new Float32Array(count * FLOATS_PER_BOID);
+  const heading = rand(Math.PI * 2);
+  for (let i = 0; i < count; i += 1) {
+    const angle = heading + rand(-1.2, 1.2);
+    const size = SIZE_TIERS[pick(SIZE_TIERS.map((t) => t.weight))].size + rand(0.15);
+    const speed = 85 / Math.sqrt(size);
+    data.set(
+      [
+        rand(width),
+        rand(height),
+        Math.cos(angle) * speed,
+        Math.sin(angle) * speed,
+        size,
+        pick(TINT_WEIGHTS),
+        rand(Math.PI * 2),
+        0,
+      ],
+      i * FLOATS_PER_BOID,
+    );
+  }
+  return data;
 };
