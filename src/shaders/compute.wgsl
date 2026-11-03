@@ -28,10 +28,10 @@ struct Params {
 const PERCEPTION = 64.0;     // neighbourhood radius (px)
 const SEPARATION = 20.0;     // personal space (px)
 const FOV_COS = -0.45;       // ignore neighbours right behind (~230° field of view)
-const CRUISE = 85.0;         // px/s
-const MAX_SPEED = 120.0;
-const MIN_SPEED = 45.0;
-const MAX_FORCE = 110.0;     // px/s², caps how sharply a boid can turn
+const CRUISE = 110.0;         // px/s
+const MAX_SPEED = 155.0;
+const MIN_SPEED = 60.0;
+const MAX_FORCE = 145.0;     // px/s², caps how sharply a boid can turn
 const W_SEP = 1.7;
 const W_ALI = 1.0;
 const W_COH = 0.6;
