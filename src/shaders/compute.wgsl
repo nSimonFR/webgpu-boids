@@ -50,9 +50,9 @@ const CROWD_FULL = 26.0;
 const FLOCKS = 4.0;
 const TAU = 6.2831853;
 const SPEED_HOLD = 5.0;      // 1/s, how quickly boids return to cruise speed
-const MOUSE_RADIUS = 220.0;
-const FLEE_TURN = 10.0;      // rad/s, how fast a boid can turn away from the pointer
-const FLEE_BOOST = 0.7;      // up to +70% speed right next to the pointer
+const MOUSE_RADIUS = 155.0;
+const FLEE_TURN = 5.0;       // rad/s, how fast a boid can turn away from the pointer
+const FLEE_BOOST = 0.35;     // up to +35% speed right next to the pointer
 const EDGE = 40.0;           // wrap this far off-screen so boids never pop in view
 
 fn limit(v: vec2f, maxLen: f32) -> vec2f {
@@ -144,7 +144,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
       // Full strength in the inner ~40% of the radius, easing out to the edge.
       fear = (1.0 - smoothstep(MOUSE_RADIUS * 0.4, MOUSE_RADIUS, d)) * params.mouseStrength;
       // Panic: flocking (following flockmates toward the pointer) fades out.
-      acc *= 1.0 - 0.8 * fear;
+      acc *= 1.0 - 0.4 * fear;
     }
   }
 
