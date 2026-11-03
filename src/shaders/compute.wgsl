@@ -28,10 +28,10 @@ struct Params {
 const PERCEPTION = 64.0;     // neighbourhood radius (px)
 const SEPARATION = 26.0;     // personal space (px)
 const FOV_COS = -0.45;       // ignore neighbours right behind (~230° field of view)
-const CRUISE = 110.0;         // px/s
-const MAX_SPEED = 155.0;
-const MIN_SPEED = 60.0;
-const MAX_FORCE = 145.0;     // px/s², caps how sharply a boid can turn
+const CRUISE = 140.0;         // px/s
+const MAX_SPEED = 195.0;
+const MIN_SPEED = 80.0;
+const MAX_FORCE = 185.0;     // px/s², caps how sharply a boid can turn
 const W_SEP = 2.2;
 const W_ALI = 1.0;
 const W_COH = 0.6;
@@ -50,7 +50,9 @@ const CROWD_FULL = 26.0;
 const FLOCKS = 4.0;
 const TAU = 6.2831853;
 const SPEED_HOLD = 5.0;      // 1/s, how quickly boids return to cruise speed
-const MOUSE_RADIUS = 150.0;
+const MOUSE_RADIUS = 220.0;
+const FLEE_TURN = 10.0;      // rad/s, how fast a boid can turn away from the pointer
+const FLEE_BOOST = 0.7;      // up to +70% speed right next to the pointer
 const EDGE = 40.0;           // wrap this far off-screen so boids never pop in view
 
 fn limit(v: vec2f, maxLen: f32) -> vec2f {
@@ -132,20 +134,36 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   let side = vec2f(-dir.y, dir.x);
   acc += side * sin(params.time * 0.35 + me.seed) * 18.0;
 
-  // Pointer: boids steer away smoothly, stronger the closer they are.
+  // Pointer: boids flee, stronger and faster the closer they are.
+  var fear = 0.0;
+  var away = vec2f(0.0);
   if (params.mouseStrength > 0.0) {
-    let away = me.pos - params.mouse;
+    away = me.pos - params.mouse;
     let d = length(away);
     if (d < MOUSE_RADIUS) {
-      let k = (1.0 - d / MOUSE_RADIUS) * params.mouseStrength;
-      acc += steer(away, me.vel, maxSpeed) * 2.5 * k;
+      // Full strength in the inner ~40% of the radius, easing out to the edge.
+      fear = (1.0 - smoothstep(MOUSE_RADIUS * 0.4, MOUSE_RADIUS, d)) * params.mouseStrength;
+      // Panic: flocking (following flockmates toward the pointer) fades out.
+      acc *= 1.0 - 0.8 * fear;
     }
   }
 
   var vel = me.vel + acc * params.dt;
-  // Keep speed in a comfortable band and ease back to cruise speed.
-  let speed = clamp(length(vel), MIN_SPEED, maxSpeed);
-  let cruise = CRUISE / sqrt(me.size);
+  if (fear > 0.0) {
+    // Flee by turning, not braking: a push opposite to the velocity would only
+    // slow the boid down, and the speed hold below would push it straight back
+    // toward the pointer. Rotate the heading toward "away" at a capped rate.
+    let heading = atan2(vel.y, vel.x);
+    var diff = atan2(away.y, away.x) - heading;
+    diff = diff - TAU * round(diff / TAU); // shortest way round
+    let turn = clamp(diff, -FLEE_TURN * fear * params.dt, FLEE_TURN * fear * params.dt);
+    vel = vec2f(cos(heading + turn), sin(heading + turn)) * length(vel);
+  }
+  // Keep speed in a comfortable band and ease back to cruise speed
+  // (both raised while fleeing, so the burst isn't immediately damped).
+  let boost = 1.0 + FLEE_BOOST * fear;
+  let speed = clamp(length(vel), MIN_SPEED, maxSpeed * boost);
+  let cruise = CRUISE / sqrt(me.size) * boost;
   let eased = mix(speed, cruise, 1.0 - exp(-SPEED_HOLD * params.dt));
   vel = safeNormalize(vel) * eased;
 
