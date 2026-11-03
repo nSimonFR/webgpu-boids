@@ -26,15 +26,30 @@ struct Params {
 @group(0) @binding(2) var<uniform> params: Params;
 
 const PERCEPTION = 64.0;     // neighbourhood radius (px)
-const SEPARATION = 20.0;     // personal space (px)
+const SEPARATION = 26.0;     // personal space (px)
 const FOV_COS = -0.45;       // ignore neighbours right behind (~230° field of view)
 const CRUISE = 110.0;         // px/s
 const MAX_SPEED = 155.0;
 const MIN_SPEED = 60.0;
 const MAX_FORCE = 145.0;     // px/s², caps how sharply a boid can turn
-const W_SEP = 1.7;
+const W_SEP = 2.2;
 const W_ALI = 1.0;
 const W_COH = 0.6;
+const W_CROWD = 0.9;
+// Local density control (weighted neighbour count): cohesion fades out
+// between COH_FULL and COH_NONE neighbours, and past CROWD_START boids push
+// away from the local centre. Groups stay airy and big flocks split up
+// instead of merging into one dense mass.
+const COH_FULL = 5.0;
+const COH_NONE = 14.0;
+const CROWD_START = 12.0;
+const CROWD_FULL = 26.0;
+// Hidden flock id (from the per-boid seed): boids align and group only with
+// their own flock but keep their distance from everyone, so several flocks
+// weave through each other instead of fusing into one field.
+const FLOCKS = 4.0;
+const TAU = 6.2831853;
+const SPEED_HOLD = 5.0;      // 1/s, how quickly boids return to cruise speed
 const MOUSE_RADIUS = 150.0;
 const EDGE = 40.0;           // wrap this far off-screen so boids never pop in view
 
@@ -62,13 +77,16 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   if (i >= n) { return; }
 
   var me = src[i];
+  let flock = floor(me.seed / TAU * FLOCKS);
   let dir = safeNormalize(me.vel);
   let maxSpeed = MAX_SPEED / sqrt(me.size);
 
   var sep = vec2f(0.0);
   var ali = vec2f(0.0);
   var coh = vec2f(0.0);
-  var count = 0.0;
+  var count = 0.0;   // same-flock neighbours (alignment / cohesion)
+  var density = 0.0; // all neighbours (crowding)
+  var crowdCentre = vec2f(0.0);
 
   for (var j = 0u; j < n; j++) {
     if (j == i) { continue; }
@@ -81,21 +99,33 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
 
     // Smooth falloff so neighbours fade in/out of influence instead of snapping.
     let w = 1.0 - smoothstep(PERCEPTION * 0.6, PERCEPTION, d);
+    density += w;
+    crowdCentre += other.pos * w;
+
+    if (d < SEPARATION) {
+      // Grows sharply at close range, so dense packs can't compress.
+      let t = 1.0 - d / SEPARATION;
+      sep -= (offset / d) * t * t;
+    }
+
+    if (floor(other.seed / TAU * FLOCKS) != flock) { continue; }
     ali += other.vel * w;
     coh += other.pos * w;
     count += w;
-    if (d < SEPARATION) {
-      sep -= (offset / d) * (1.0 - d / SEPARATION);
-    }
   }
 
   var acc = vec2f(0.0);
   if (count > 0.0) {
+    let toCentre = coh / count - me.pos;
     acc += steer(ali / count, me.vel, maxSpeed) * W_ALI;
-    acc += steer(coh / count - me.pos, me.vel, maxSpeed) * W_COH;
+    acc += steer(toCentre, me.vel, maxSpeed) * W_COH * (1.0 - smoothstep(COH_FULL, COH_NONE, density));
+  }
+  if (density > CROWD_START) {
+    acc += steer(me.pos - crowdCentre / density, me.vel, maxSpeed) * W_CROWD * smoothstep(CROWD_START, CROWD_FULL, density);
   }
   if (length(sep) > 0.0) {
-    acc += steer(sep, me.vel, maxSpeed) * W_SEP;
+    // Scale by how crowded the personal space is (capped), not a flat push.
+    acc += steer(sep, me.vel, maxSpeed) * W_SEP * min(1.0, length(sep) * 2.0);
   }
 
   // Gentle wander: a slow sideways drift so lone boids curve instead of flying straight.
@@ -116,7 +146,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   // Keep speed in a comfortable band and ease back to cruise speed.
   let speed = clamp(length(vel), MIN_SPEED, maxSpeed);
   let cruise = CRUISE / sqrt(me.size);
-  let eased = mix(speed, cruise, 0.4 * params.dt);
+  let eased = mix(speed, cruise, 1.0 - exp(-SPEED_HOLD * params.dt));
   vel = safeNormalize(vel) * eased;
 
   var pos = me.pos + vel * params.dt;
