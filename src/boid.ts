@@ -33,7 +33,7 @@ export const spawnBoids = (count: number, width: number, height: number) => {
   for (let i = 0; i < count; i += 1) {
     const angle = heading + rand(-1.2, 1.2);
     const size = SIZE_TIERS[pick(SIZE_TIERS.map((t) => t.weight))].size + rand(0.15);
-    const speed = 110 / Math.sqrt(size);
+    const speed = 140 / Math.sqrt(size);
     data.set(
       [
         rand(width),
